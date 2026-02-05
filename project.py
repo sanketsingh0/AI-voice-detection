@@ -1,14 +1,12 @@
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 import base64
-import os
 import librosa
 import numpy as np
-import traceback
+import io
 
 app = FastAPI()
 
-# this key for authentification 
 API_KEY = "GUVI1234"
 
 class AudioInput(BaseModel):
@@ -16,11 +14,10 @@ class AudioInput(BaseModel):
 
 
 def safe_b64decode(data: str) -> bytes:
-    data = data.strip()
-    data = data.replace("\n", "").replace("\r", "").replace(" ", "")
-    missing_padding = len(data) % 4
-    if missing_padding:
-        data += "=" * (4 - missing_padding)
+    data = data.strip().replace("\n", "").replace(" ", "")
+    padding = len(data) % 4
+    if padding:
+        data += "=" * (4 - padding)
     return base64.b64decode(data)
 
 
@@ -29,29 +26,18 @@ def detect_audio(
     data: AudioInput,
     x_api_key: str = Header(None)
 ):
-    #  API KEY CHECK
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
     try:
-        # Base64 decode
         audio_bytes = safe_b64decode(data.audio_base64)
 
-        # Save audio
-        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        file_path = os.path.join(BASE_DIR, "input_audio.mp3")
+        audio_buffer = io.BytesIO(audio_bytes)
+        y, sr = librosa.load(audio_buffer, sr=None)
 
-        with open(file_path, "wb") as f:
-            f.write(audio_bytes)
-
-        # Load audio
-        y, sr = librosa.load(file_path, sr=None)
-
-        # MFCC
         mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-        mfcc_std = np.std(mfcc)
+        mfcc_std = float(np.std(mfcc))
 
-        # Decision logic
         if mfcc_std < 15:
             result = "AI_GENERATED"
             confidence = round(1 - (mfcc_std / 20), 2)
@@ -65,8 +51,7 @@ def detect_audio(
         }
 
     except Exception:
-        return {
-            "error": "failed",
-            "details": traceback.format_exc()
-
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="Audio processing failed"
+        )
