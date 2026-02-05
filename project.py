@@ -27,10 +27,10 @@ def safe_b64decode(data: str) -> bytes:
 @app.post("/detect")
 def detect_audio(
     data: AudioInput,
-    authorization: str = Header(None)
+    x_api_key: str = Header(None)
 ):
     #  API KEY CHECK
-    if authorization != API_KEY:
+    if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
 
     try:
@@ -68,4 +68,5 @@ def detect_audio(
         return {
             "error": "failed",
             "details": traceback.format_exc()
+
         }
